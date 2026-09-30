@@ -11,12 +11,12 @@ export type CreateCareerAgentOptions = {
 	insights?: SanityInsightsIntegration | null;
 };
 
-const onetCode = z
+export const onetCode = z
 	.string()
 	.regex(/^\d{2}-\d{4}\.\d{2}$/)
 	.describe('O*NET-SOC code, e.g. 15-2051.00');
 
-const tools = {
+export const tools = {
 	searchOccupations: tool({
 		description:
 			'Full-text search over O*NET occupations by title, alternate job titles, and description. ' +

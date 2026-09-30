@@ -2,6 +2,7 @@ import type { ServerResponse } from 'node:http';
 import type { MCPClient } from '@ai-sdk/mcp';
 import { pipeAgentUIStreamToResponse } from 'ai';
 import { createCareerAgent } from './agent.ts';
+import { createInterviewAgent } from './interview-agent.ts';
 import { createSanityContextMcpClient, fetchInitialContext, loadSanityContextTools } from './sanity-context.ts';
 import { createInsightsIntegration } from './sanity-insights.ts';
 
@@ -43,10 +44,32 @@ export async function handleChat({ messages, id: chatId }: ChatRequestBody, res:
 		});
 	} catch (error) {
 		await mcpClient?.close();
-		console.error('[chat]', error);
-		if (!res.headersSent) {
-			res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-		}
-		res.end(error instanceof Error ? error.message : 'Something went wrong.');
+		failRequest(res, '[chat]', error);
 	}
+}
+
+/** Mock interview coach. Uses only local O*NET tools, so no MCP client or Insights wiring. */
+export async function handleInterview({ messages }: ChatRequestBody, res: ServerResponse, abortSignal: AbortSignal) {
+	try {
+		await pipeAgentUIStreamToResponse({
+			response: res,
+			agent: createInterviewAgent(),
+			uiMessages: messages,
+			abortSignal,
+			onError: (error) => {
+				console.error('[interview]', error);
+				return error instanceof Error ? error.message : 'Something went wrong.';
+			},
+		});
+	} catch (error) {
+		failRequest(res, '[interview]', error);
+	}
+}
+
+function failRequest(res: ServerResponse, label: string, error: unknown) {
+	console.error(label, error);
+	if (!res.headersSent) {
+		res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+	}
+	res.end(error instanceof Error ? error.message : 'Something went wrong.');
 }

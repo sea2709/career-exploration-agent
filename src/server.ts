@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { handleChat, type ChatRequestBody } from './chat.ts';
+import { handleChat, handleInterview, type ChatRequestBody } from './chat.ts';
 import { env } from './env.ts';
 
 if (!env.AGENT_API_TOKEN) {
@@ -31,6 +31,11 @@ function isChatRequestBody(body: unknown): body is ChatRequestBody {
 	return typeof body === 'object' && body !== null && Array.isArray((body as ChatRequestBody).messages);
 }
 
+const CHAT_ROUTES: Record<string, typeof handleChat> = {
+	'/chat': handleChat,
+	'/interview': handleInterview,
+};
+
 const server = createServer(async (req, res) => {
 	const origin = req.headers.origin;
 	if (origin && env.ALLOWED_ORIGINS.includes(origin)) {
@@ -54,7 +59,8 @@ const server = createServer(async (req, res) => {
 		return;
 	}
 
-	if (req.method === 'POST' && pathname === '/chat') {
+	const handler = CHAT_ROUTES[pathname];
+	if (req.method === 'POST' && handler) {
 		if (!isAuthorized(req)) {
 			res.setHeader('WWW-Authenticate', 'Bearer');
 			return sendText(res, 401, 'Missing or invalid bearer token.');
@@ -75,7 +81,7 @@ const server = createServer(async (req, res) => {
 			if (!res.writableFinished) abort.abort();
 		});
 
-		await handleChat(body, res, abort.signal);
+		await handler(body, res, abort.signal);
 		return;
 	}
 
