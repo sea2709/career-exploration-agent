@@ -1,6 +1,21 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { handleChat, type ChatRequestBody } from './chat.ts';
 import { env } from './env.ts';
+
+if (!env.AGENT_API_TOKEN) {
+	console.error('[agent] AGENT_API_TOKEN is not set. Generate one with `openssl rand -base64 32` (see .env.example).');
+	process.exit(1);
+}
+
+const expectedTokenDigest = createHash('sha256').update(env.AGENT_API_TOKEN).digest();
+
+/** Compares SHA-256 digests so the check is constant-time regardless of token length. */
+function isAuthorized(req: IncomingMessage): boolean {
+	const match = /^Bearer (.+)$/.exec(req.headers.authorization ?? '');
+	if (!match) return false;
+	return timingSafeEqual(createHash('sha256').update(match[1]).digest(), expectedTokenDigest);
+}
 
 async function readJson(req: IncomingMessage): Promise<unknown> {
 	const chunks: Buffer[] = [];
@@ -28,7 +43,7 @@ const server = createServer(async (req, res) => {
 	if (req.method === 'OPTIONS') {
 		res.writeHead(204, {
 			'Access-Control-Allow-Methods': 'POST, OPTIONS',
-			'Access-Control-Allow-Headers': 'Content-Type',
+			'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 			'Access-Control-Max-Age': '86400',
 		}).end();
 		return;
@@ -40,6 +55,11 @@ const server = createServer(async (req, res) => {
 	}
 
 	if (req.method === 'POST' && pathname === '/chat') {
+		if (!isAuthorized(req)) {
+			res.setHeader('WWW-Authenticate', 'Bearer');
+			return sendText(res, 401, 'Missing or invalid bearer token.');
+		}
+
 		let body: unknown;
 		try {
 			body = await readJson(req);

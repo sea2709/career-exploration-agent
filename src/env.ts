@@ -2,6 +2,8 @@ const optional = (name: string) => process.env[name]?.trim() || undefined;
 
 export const env = {
 	PORT: Number(optional('PORT') ?? 8787),
+	/** Shared secret callers must send as `Authorization: Bearer <token>` on POST /chat. */
+	AGENT_API_TOKEN: optional('AGENT_API_TOKEN'),
 	/** Comma-separated origins allowed to call the agent from a browser. */
 	ALLOWED_ORIGINS: (optional('ALLOWED_ORIGINS') ?? 'http://localhost:4321').split(',').map((o) => o.trim()),
 
