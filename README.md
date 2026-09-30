@@ -57,11 +57,12 @@ web /api/chat ──POST /chat (Bearer AGENT_API_TOKEN)──▶ agent
 
 | Method    | Path      | Auth           | Description                                                  |
 | --------- | --------- | -------------- | ------------------------------------------------------------ |
-| `POST`    | `/chat`   | Bearer token   | Run the agent and stream an AI SDK UI message stream back    |
-| `GET`     | `/health` | none           | Returns `{"ok":true}`                                        |
-| `OPTIONS` | any       | none           | CORS preflight                                               |
+| `POST`    | `/chat`      | Bearer token   | Run the Career Explorer agent and stream an AI SDK UI message stream back |
+| `POST`    | `/interview` | Bearer token   | Run the Mock Interview Coach agent (same body and response format)        |
+| `GET`     | `/health`    | none           | Returns `{"ok":true}`                                                     |
+| `OPTIONS` | any          | none           | CORS preflight                                                            |
 
-`POST /chat` expects the body that AI SDK's `useChat` sends: `{ id, messages }`, where `messages` is an array of UI messages. `id` is optional, but when present it's used as the Conversation Insights thread id.
+`POST /chat` and `POST /interview` expect the body that AI SDK's `useChat` sends: `{ id, messages }`, where `messages` is an array of UI messages. On `/chat`, `id` is optional, but when present it's used as the Conversation Insights thread id. `/interview` doesn't record Insights.
 
 Responses:
 
@@ -130,6 +131,21 @@ Codes are O\*NET-SOC codes like `15-2051.00`. Every result includes an `onetonli
 
 The Sanity Context MCP server adds `groq_query` and `schema_explorer` for questions the local tools don't cover.
 
+## Mock Interview Coach
+
+`POST /interview` runs a separate `ToolLoopAgent` defined in `src/interview-agent.ts`. It uses only local tools (no MCP client), stops after 6 steps per turn, and keeps interview state in the conversation itself. The first user message carries the setup: target job, number of questions, and focus (`mixed`, `behavioral`, or `skills`).
+
+| Tool                 | Input                          | Returns                                                                        |
+| -------------------- | ------------------------------ | ------------------------------------------------------------------------------ |
+| `searchOccupations`  | same as the explorer tool      | Matching occupations                                                           |
+| `getInterviewBrief`  | `code`                         | Core tasks, technologies, work styles, and top skills/work activities/knowledge with importance, required level, and Level Scale Anchors (`src/onet/interview.ts`) |
+| `scoreAnswer`        | the model's assessment         | Echoes the input. The UI renders it as a feedback card                         |
+| `finishInterview`    | the model's final report       | Echoes the input. The UI renders it as a report card                           |
+
+Level Scale Anchors are O\*NET's concrete examples of what level 2, 4, and 6 look like on the 0–7 Level scale (for example, Programming at level 2 is "Write a program to sort objects in a database"). The coach pitches questions at each competency's required level and grades answers by comparing them with these anchors.
+
+`scoreAnswer` and `finishInterview` exist to give the UI structured output. If you change their input schemas, update the matching types in `web/src/components/InterviewCoach.tsx`.
+
 ## Conversation Insights
 
 When `SANITY_ORGANIZATION_ID` and `SANITY_INSIGHTS_TOKEN` are set and the request includes a chat `id`, each transcript is saved to the organization's Context store under `SANITY_CONTEXT_ENDPOINT_NAME`. The scheduled `classify-conversations` Sanity Function at the repo root (`functions/`, deployed via `sanity.blueprint.ts`) classifies those transcripts hourly, so it must use the same endpoint name.
@@ -139,13 +155,15 @@ When `SANITY_ORGANIZATION_ID` and `SANITY_INSIGHTS_TOKEN` are set and the reques
 ```
 src/
 ├── server.ts           # HTTP server, bearer auth, CORS, routing
-├── chat.ts             # Per-request wiring: MCP client, initial context, agent, streaming
-├── agent.ts            # Local tool definitions, system prompt, ToolLoopAgent factory
+├── chat.ts             # Per-request wiring for /chat and /interview: MCP client, agents, streaming
+├── agent.ts            # Career Explorer: local tool definitions, system prompt, ToolLoopAgent factory
+├── interview-agent.ts  # Mock Interview Coach: tools, scoring schemas, system prompt, agent factory
 ├── env.ts              # Environment variables and defaults
 ├── sanity.ts           # Read-only Sanity client for the O*NET dataset
 ├── sanity-context.ts   # Context MCP client, initial-context fetch and cache
 ├── sanity-insights.ts  # Conversation Insights integration
 └── onet/
-    └── data.ts         # GROQ queries and shaping for the O*NET tools
+    ├── data.ts         # GROQ queries and shaping for the O*NET tools
+    └── interview.ts    # Interview brief: competencies with Level Scale Anchors
 skills/                 # Sanity Context agent skills (installed from sanity-io/context)
 ```
