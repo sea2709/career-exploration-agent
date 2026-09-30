@@ -3,12 +3,18 @@ import { isStepCount, tool, ToolLoopAgent } from 'ai';
 import { z } from 'zod';
 import { tools as explorerTools } from './agent.ts';
 import { env } from './env.ts';
-import { buildInterestProfile, getQuizActivities, matchOccupations, type ActivityRating } from './onet/interests.ts';
+import {
+	buildInterestProfile,
+	getQuizActivities,
+	matchOccupations,
+	RATINGS,
+	type ActivityRating,
+} from './onet/interests.ts';
 
 const quizRound = z.enum(['broad', 'focused']);
 
 const activityRatings = z.object({
-	ratings: z.array(z.object({ id: z.string(), rating: z.enum(['like', 'unsure', 'dislike']) })),
+	ratings: z.array(z.object({ id: z.string(), rating: z.enum(RATINGS) })),
 });
 
 export type QuizRatings = z.infer<typeof activityRatings>;
@@ -45,7 +51,8 @@ function createQuizTools(ratings: ActivityRating[]) {
 		presentActivities: tool({
 			description:
 				'Show the activities from the latest getQuizActivities call for this round as a rating card, and wait ' +
-				'for the user to rate each one like, unsure, or dislike. Call right after getQuizActivities.',
+				'for the user to rate each one on a 5-point scale from strongly dislike to strongly like. Call right after ' +
+				'getQuizActivities.',
 			inputSchema: z.object({
 				round: quizRound,
 				intro: z.string().describe('One short sentence shown above the card'),

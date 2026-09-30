@@ -168,7 +168,7 @@ The UI labels the Knowledge Base's tool calls through `PREP_LABELS` in `web/src/
 
 ## Interest Quiz
 
-`POST /quiz` runs a `ToolLoopAgent` defined in `src/quiz-agent.ts`. It follows the O\*NET Interest Profiler: users rate work activities as like, unsure, or dislike, and the ratings become a RIASEC profile (Realistic, Investigative, Artistic, Social, Enterprising, Conventional) matched against every occupation's O\*NET interest scores. It stops after 8 steps per turn. The first user message carries the most preparation the user is open to, as a Job Zone or "any".
+`POST /quiz` runs a `ToolLoopAgent` defined in `src/quiz-agent.ts`. It follows the O\*NET Interest Profiler: users rate work activities on its 5-point scale (strongly dislike, dislike, unsure, like, strongly like), and the ratings become a RIASEC profile (Realistic, Investigative, Artistic, Social, Enterprising, Conventional) matched against every occupation's O\*NET interest scores. It stops after 8 steps per turn. The first user message carries the most preparation the user is open to, as a Job Zone or "any".
 
 The quiz has two rounds:
 
@@ -187,7 +187,7 @@ Because `presentActivities` has no `execute`, the agent's turn ends when it's ca
 
 Scoring (`src/onet/interests.ts`) is deterministic:
 
-- Each rating is worth like 1, unsure 0.5, dislike 0. A type's score is `1 + 6 × mean`, on the same 1–7 scale O\*NET uses for occupations. Area activities count toward each of the area's parent types at half weight.
+- Each rating is worth strongly dislike 0, dislike 0.25, unsure 0.5, like 0.75, strongly like 1 (`RATING_VALUE`). An area counts as liked when its mean is at least 0.75 and disliked at 0.25 or below. A type's score is `1 + 6 × mean`, on the same 1–7 scale O\*NET uses for occupations. Area activities count toward each of the area's parent types at half weight.
 - The match percent is 70% the Pearson correlation of the user's and the occupation's RIASEC scores (rescaled to 0–1) and 30% how much the user liked the occupation's strongest Specific Interest Areas, weighted by how strong each area is for the occupation. Before the focused round, it's the correlation alone.
 - The interest catalog (47 documents) and every occupation's interest profile (about 900) are fetched once and cached in memory. Restart the agent after re-importing interest data.
 

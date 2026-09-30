@@ -13,10 +13,22 @@ const RIASEC_FIELDS: Record<RiasecCode, string> = {
 	C: 'conventional',
 };
 
-export type Rating = 'like' | 'unsure' | 'dislike';
+/** The O*NET Interest Profiler's 5-point response scale. */
+export const RATINGS = ['strongly-dislike', 'dislike', 'unsure', 'like', 'strongly-like'] as const;
+export type Rating = (typeof RATINGS)[number];
 export type QuizRound = 'broad' | 'focused';
 
-const RATING_VALUE: Record<Rating, number> = { like: 1, unsure: 0.5, dislike: 0 };
+const RATING_VALUE: Record<Rating, number> = {
+	'strongly-dislike': 0,
+	dislike: 0.25,
+	unsure: 0.5,
+	like: 0.75,
+	'strongly-like': 1,
+};
+
+/** Area preferences (mean rating value) at or past these count as liked or disliked. */
+const LIKED = 0.75;
+const DISLIKED = 0.25;
 
 /** Area activities also count toward their parent career types, at this weight. */
 const AREA_WEIGHT_FOR_TYPES = 0.5;
@@ -223,8 +235,8 @@ export async function buildInterestProfile(ratings: ActivityRating[]) {
 				keywords: (doc?.keywords ?? []).slice(0, 6),
 			};
 		}),
-		likedAreas: areas.filter((a) => a.preference >= 0.5).map((a) => ({ name: a.area.name, score: a.score })),
-		dislikedAreas: areas.filter((a) => a.preference === 0).map((a) => a.area.name),
+		likedAreas: areas.filter((a) => a.preference >= LIKED).map((a) => ({ name: a.area.name, score: a.score })),
+		dislikedAreas: areas.filter((a) => a.preference <= DISLIKED).map((a) => a.area.name),
 	};
 }
 
@@ -272,7 +284,7 @@ export async function matchOccupations(ratings: ActivityRating[], limit: number,
 				const w = ((score - 1) / 6) ** 2;
 				weighted += w * pref.preference;
 				weights += w;
-				if (pref.preference === 1 && score >= 5) matchingAreas.push(pref.area.name);
+				if (pref.preference >= LIKED && score >= 5) matchingAreas.push(pref.area.name);
 			}
 			const fit = areaPrefs.size ? 0.7 * riasecFit + 0.3 * (weights > 0.05 ? weighted / weights : 0.5) : riasecFit;
 			return { o, fit, matchingAreas };
