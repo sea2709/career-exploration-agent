@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { handleChat, handleInterview, type ChatRequestBody } from './chat.ts';
+import { handleChat, handleInterview, handleQuiz, type ChatRequestBody } from './chat.ts';
 import { env } from './env.ts';
 
 if (!env.AGENT_API_TOKEN) {
@@ -34,6 +34,7 @@ function isChatRequestBody(body: unknown): body is ChatRequestBody {
 const CHAT_ROUTES: Record<string, typeof handleChat> = {
 	'/chat': handleChat,
 	'/interview': handleInterview,
+	'/quiz': handleQuiz,
 };
 
 const server = createServer(async (req, res) => {

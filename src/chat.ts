@@ -1,9 +1,10 @@
 import type { ServerResponse } from 'node:http';
-import type { MCPClient } from '@ai-sdk/mcp';
 import { pipeAgentUIStreamToResponse } from 'ai';
 import { createCareerAgent } from './agent.ts';
+import { env } from './env.ts';
 import { createInterviewAgent } from './interview-agent.ts';
-import { createSanityContextMcpClient, fetchInitialContext, loadSanityContextTools } from './sanity-context.ts';
+import { createQuizAgent } from './quiz-agent.ts';
+import { connectSanityContext, type SanityContextConnection } from './sanity-context.ts';
 import { createInsightsIntegration } from './sanity-insights.ts';
 
 export type ChatRequestBody = {
@@ -13,19 +14,14 @@ export type ChatRequestBody = {
 };
 
 export async function handleChat({ messages, id: chatId }: ChatRequestBody, res: ServerResponse, abortSignal: AbortSignal) {
-	let mcpClient: MCPClient | null = null;
+	let context: SanityContextConnection | null = null;
 
 	try {
-		const [mcpClientResult, initialContext] = await Promise.all([
-			createSanityContextMcpClient(),
-			fetchInitialContext(),
-		]);
-		mcpClient = mcpClientResult;
+		context = await connectSanityContext();
 
-		const sanityContextTools = await loadSanityContextTools(mcpClient, Boolean(initialContext));
 		const agent = createCareerAgent({
-			sanityContextTools,
-			initialContext,
+			sanityContextTools: context.tools,
+			initialContext: context.initialContext,
 			insights: createInsightsIntegration(chatId),
 		});
 
@@ -35,7 +31,7 @@ export async function handleChat({ messages, id: chatId }: ChatRequestBody, res:
 			uiMessages: messages,
 			abortSignal,
 			onEnd: async () => {
-				await mcpClient?.close();
+				await context?.client.close();
 			},
 			onError: (error) => {
 				console.error('[chat]', error);
@@ -43,26 +39,67 @@ export async function handleChat({ messages, id: chatId }: ChatRequestBody, res:
 			},
 		});
 	} catch (error) {
-		await mcpClient?.close();
+		await context?.client.close();
 		failRequest(res, '[chat]', error);
 	}
 }
 
-/** Mock interview coach. Uses only local O*NET tools, so no MCP client or Insights wiring. */
+/**
+ * Mock interview coach. Uses the local O*NET tools, plus the coaching Knowledge Base when
+ * SANITY_COACHING_MCP_URL is set. No Insights wiring.
+ */
 export async function handleInterview({ messages }: ChatRequestBody, res: ServerResponse, abortSignal: AbortSignal) {
+	const coaching = await connectCoachingKnowledge();
+
 	try {
 		await pipeAgentUIStreamToResponse({
 			response: res,
-			agent: createInterviewAgent(),
+			agent: createInterviewAgent({
+				coachingTools: coaching?.tools,
+				coachingOutline: coaching?.initialContext,
+			}),
 			uiMessages: messages,
 			abortSignal,
+			onEnd: async () => {
+				await coaching?.client.close();
+			},
 			onError: (error) => {
 				console.error('[interview]', error);
 				return error instanceof Error ? error.message : 'Something went wrong.';
 			},
 		});
 	} catch (error) {
+		await coaching?.client.close();
 		failRequest(res, '[interview]', error);
+	}
+}
+
+/** Interest quiz. Local O*NET tools only; activity ratings arrive as presentActivities tool outputs. */
+export async function handleQuiz({ messages }: ChatRequestBody, res: ServerResponse, abortSignal: AbortSignal) {
+	try {
+		await pipeAgentUIStreamToResponse({
+			response: res,
+			agent: createQuizAgent(messages),
+			uiMessages: messages,
+			abortSignal,
+			onError: (error) => {
+				console.error('[quiz]', error);
+				return error instanceof Error ? error.message : 'Something went wrong.';
+			},
+		});
+	} catch (error) {
+		failRequest(res, '[quiz]', error);
+	}
+}
+
+/** The interview works without coaching guidance, so connection failures are logged, not thrown. */
+async function connectCoachingKnowledge(): Promise<SanityContextConnection | null> {
+	if (!env.SANITY_COACHING_MCP_URL || !env.SANITY_COACHING_TOKEN) return null;
+	try {
+		return await connectSanityContext(env.SANITY_COACHING_MCP_URL, env.SANITY_COACHING_TOKEN);
+	} catch (error) {
+		console.warn('[interview] Coaching knowledge base unavailable, continuing without it:', error);
+		return null;
 	}
 }
 

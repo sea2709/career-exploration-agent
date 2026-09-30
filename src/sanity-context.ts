@@ -6,9 +6,14 @@ const { SANITY_API_TOKEN } = env;
 
 const CONTEXT_API_VERSION = 'v2026-03-03';
 
-let cachedInitialContext: string | null = null;
-let cacheTimestamp = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const initialContextCache = new Map<string, { text: string; fetchedAt: number }>();
+
+export type SanityContextConnection = {
+	client: MCPClient;
+	tools: ToolSet;
+	initialContext: string | null;
+};
 
 export function defaultSanityContextMcpUrl(): string {
 	return `https://api.sanity.io/${CONTEXT_API_VERSION}/context/mcp/${env.SANITY_PROJECT_ID}/${env.SANITY_DATASET}`;
@@ -24,27 +29,30 @@ function initialContextUrl(mcpUrl: string): string {
 	return url.toString();
 }
 
-/** Cached schema overview for the system prompt (skips the initial_context tool call). */
-export async function fetchInitialContext(mcpUrl = resolveSanityContextMcpUrl()): Promise<string | null> {
-	if (!SANITY_API_TOKEN) return null;
+/** Cached initial context for the system prompt (skips the initial_context tool call), per endpoint. */
+export async function fetchInitialContext(
+	mcpUrl = resolveSanityContextMcpUrl(),
+	token = SANITY_API_TOKEN,
+): Promise<string | null> {
+	if (!token) return null;
 
-	const isStale = Date.now() - cacheTimestamp > CACHE_TTL_MS;
+	const cached = initialContextCache.get(mcpUrl);
+	const isStale = !cached || Date.now() - cached.fetchedAt > CACHE_TTL_MS;
 	const fetchPromise = isStale
 		? fetch(initialContextUrl(mcpUrl), {
-				headers: { Authorization: `Bearer ${SANITY_API_TOKEN}` },
+				headers: { Authorization: `Bearer ${token}` },
 			})
 				.then(async (res) => {
 					if (res.ok) {
-						cachedInitialContext = await res.text();
-						cacheTimestamp = Date.now();
+						initialContextCache.set(mcpUrl, { text: await res.text(), fetchedAt: Date.now() });
 					}
 				})
 				.catch(() => {})
 		: null;
 
-	if (!cachedInitialContext) await fetchPromise;
+	if (!cached) await fetchPromise;
 
-	return cachedInitialContext;
+	return initialContextCache.get(mcpUrl)?.text ?? null;
 }
 
 export function assertSanityContextConfigured(): void {
@@ -55,15 +63,18 @@ export function assertSanityContextConfigured(): void {
 	}
 }
 
-export async function createSanityContextMcpClient(mcpUrl = resolveSanityContextMcpUrl()): Promise<MCPClient> {
-	assertSanityContextConfigured();
+export async function createSanityContextMcpClient(
+	mcpUrl = resolveSanityContextMcpUrl(),
+	token = SANITY_API_TOKEN,
+): Promise<MCPClient> {
+	if (!token) assertSanityContextConfigured();
 
 	return createMCPClient({
 		transport: {
 			type: 'http',
 			url: mcpUrl,
 			headers: {
-				Authorization: `Bearer ${SANITY_API_TOKEN}`,
+				Authorization: `Bearer ${token}`,
 			},
 		},
 	});
@@ -75,4 +86,21 @@ export async function loadSanityContextTools(mcpClient: MCPClient, hasInitialCon
 	if (!hasInitialContext) return allMcpTools;
 	const { initial_context: _ignored, ...mcpTools } = allMcpTools;
 	return mcpTools;
+}
+
+/** Opens an MCP client and loads its tools and initial context. The caller must close `client`. */
+export async function connectSanityContext(
+	mcpUrl = resolveSanityContextMcpUrl(),
+	token = SANITY_API_TOKEN,
+): Promise<SanityContextConnection> {
+	const [client, initialContext] = await Promise.all([
+		createSanityContextMcpClient(mcpUrl, token),
+		fetchInitialContext(mcpUrl, token),
+	]);
+	try {
+		return { client, initialContext, tools: await loadSanityContextTools(client, Boolean(initialContext)) };
+	} catch (error) {
+		await client.close();
+		throw error;
+	}
 }

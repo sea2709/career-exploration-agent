@@ -15,3 +15,6 @@ npm-debug.log*
 
 # editor settings
 .idea/
+
+# git worktrees
+.worktrees/

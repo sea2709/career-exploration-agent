@@ -59,10 +59,11 @@ web /api/chat ──POST /chat (Bearer AGENT_API_TOKEN)──▶ agent
 | --------- | --------- | -------------- | ------------------------------------------------------------ |
 | `POST`    | `/chat`      | Bearer token   | Run the Career Explorer agent and stream an AI SDK UI message stream back |
 | `POST`    | `/interview` | Bearer token   | Run the Mock Interview Coach agent (same body and response format)        |
+| `POST`    | `/quiz`      | Bearer token   | Run the Interest Quiz agent (same body and response format)               |
 | `GET`     | `/health`    | none           | Returns `{"ok":true}`                                                     |
 | `OPTIONS` | any          | none           | CORS preflight                                                            |
 
-`POST /chat` and `POST /interview` expect the body that AI SDK's `useChat` sends: `{ id, messages }`, where `messages` is an array of UI messages. On `/chat`, `id` is optional, but when present it's used as the Conversation Insights thread id. `/interview` doesn't record Insights.
+The `POST` routes expect the body that AI SDK's `useChat` sends: `{ id, messages }`, where `messages` is an array of UI messages. On `/chat`, `id` is optional, but when present it's used as the Conversation Insights thread id. `/interview` and `/quiz` don't record Insights.
 
 Responses:
 
@@ -93,12 +94,14 @@ All variables are read in `src/env.ts`. Blank values are treated as unset.
 | `AGENT_API_TOKEN`              | yes      | none                                 | Bearer token callers must send. The server exits at startup without it. |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | yes      | none                                 | Gemini API key                                                       |
 | `SANITY_API_TOKEN`             | yes      | none                                 | Viewer token for the Sanity Context MCP endpoint                     |
-| `GEMINI_MODEL`                 | no       | `gemini-3.5-flash`                   | Gemini model id                                                      |
+| `GEMINI_MODEL`                 | no       | `gemini-3.8-flash`                   | Gemini model id                                                      |
 | `PORT`                         | no       | `8787`                               | HTTP port                                                            |
 | `ALLOWED_ORIGINS`              | no       | `http://localhost:4321`              | Comma-separated browser origins that get CORS headers                |
 | `SANITY_PROJECT_ID`            | no       | `rhq335ze`                           | Sanity project                                                       |
 | `SANITY_DATASET`               | no       | `production`                         | Sanity dataset                                                       |
 | `SANITY_CONTEXT_MCP_URL`       | no       | dataset-addressed legacy endpoint    | Override for an org-level Context MCP endpoint                       |
+| `SANITY_COACHING_MCP_URL`      | no       | none                                 | Context MCP endpoint serving the coaching Knowledge Base (Mock Interview Coach) |
+| `SANITY_COACHING_TOKEN`        | no       | `SANITY_API_TOKEN`                   | Organization token with Context access for the coaching endpoint     |
 | `SANITY_ORGANIZATION_ID`       | no       | none                                 | Enables Conversation Insights (with `SANITY_INSIGHTS_TOKEN`)         |
 | `SANITY_INSIGHTS_TOKEN`        | no       | none                                 | Editor token for writing Insights transcripts                        |
 | `SANITY_CONTEXT_ENDPOINT_NAME` | no       | `career-explorer`                    | Groups conversations in the Insights dashboard                       |
@@ -133,7 +136,7 @@ The Sanity Context MCP server adds `groq_query` and `schema_explorer` for questi
 
 ## Mock Interview Coach
 
-`POST /interview` runs a separate `ToolLoopAgent` defined in `src/interview-agent.ts`. It uses only local tools (no MCP client), stops after 6 steps per turn, and keeps interview state in the conversation itself. The first user message carries the setup: target job, number of questions, and focus (`mixed`, `behavioral`, or `skills`).
+`POST /interview` runs a separate `ToolLoopAgent` defined in `src/interview-agent.ts`. It uses the local tools below, plus the coaching Knowledge Base when it's configured. It stops after 6 steps per turn (9 with the Knowledge Base) and keeps interview state in the conversation itself. The first user message carries the setup: target job, number of questions, and focus (`mixed`, `behavioral`, or `skills`).
 
 | Tool                 | Input                          | Returns                                                                        |
 | -------------------- | ------------------------------ | ------------------------------------------------------------------------------ |
@@ -146,24 +149,70 @@ Level Scale Anchors are O\*NET's concrete examples of what level 2, 4, and 6 loo
 
 `scoreAnswer` and `finishInterview` exist to give the UI structured output. If you change their input schemas, update the matching types in `web/src/components/InterviewCoach.tsx`.
 
+### Coaching Knowledge Base
+
+Career counselors write interview coaching guidance as `coachingGuide` documents in Studio: answer structure, question types, the rating rubric, feedback, candidate situations, and practice ideas. A Sanity Context Knowledge Base imports the published guides and builds them into an outline of entries, flagging guides that contradict each other. The coach gets the outline in its system prompt and reads entries through the endpoint's MCP tools before asking, scoring, and writing the report.
+
+The O\*NET brief stays the source of truth for what the job requires. The guidance only shapes how the coach asks, grades, and gives feedback. If `SANITY_COACHING_MCP_URL` is unset or the endpoint can't be reached, the coach runs exactly as before.
+
+Knowledge Bases are in beta. `npm run kb:coaching` prints source usage against the limit (16 of 5,000 for this organization). Keep guides focused anyway: the build merges overlapping guides into one entry (the 16 starter guides became 12 entries) and raises conflict issues when they disagree.
+
+Setup:
+
+1. Deploy the Studio so the Coaching Guide type shows up for editors (`cd ../studio && npm run deploy`), then seed the starter guides: `npm run seed:coaching` (add `-- --dry-run` to preview). The script skips guides whose title already exists, so edits in Studio are never overwritten.
+2. Create and build the Knowledge Base: `npm run kb:coaching` in `studio/`. The first run prints a `COACHING_KB_ID` to save in `studio/.env`. Later runs refresh it, re-reading the guides and filing change issues. It also turns on a weekly refresh. Review any open issues (such as conflicting guidance) in the Sanity dashboard under Context → Knowledge Bases.
+3. In the Sanity dashboard, open Context → MCP endpoints and create an endpoint (for example `interview-coaching`) with **Content source: Knowledge base**, pointing at "Interview coaching guidance".
+4. Set `SANITY_COACHING_MCP_URL` to that endpoint's URL. If `SANITY_API_TOKEN` isn't an organization token with Context access, also set `SANITY_COACHING_TOKEN`.
+
+The UI labels the Knowledge Base's tool calls through `PREP_LABELS` in `web/src/components/InterviewCoach.tsx`. If the endpoint exposes tool names other than `initial_context` and `knowledge_base_read`, add them there.
+
+## Interest Quiz
+
+`POST /quiz` runs a `ToolLoopAgent` defined in `src/quiz-agent.ts`. It follows the O\*NET Interest Profiler: users rate work activities as like, unsure, or dislike, and the ratings become a RIASEC profile (Realistic, Investigative, Artistic, Social, Enterprising, Conventional) matched against every occupation's O\*NET interest scores. It stops after 8 steps per turn. The first user message carries the most preparation the user is open to, as a Job Zone or "any".
+
+The quiz has two rounds:
+
+1. **Broad:** the 24 illustrative activities for the six career interest types (four each), interleaved.
+2. **Focused:** one random activity from each Specific Interest Area under the user's two leading types (up to 18).
+
+| Tool                    | Input                    | Returns                                                                                   |
+| ----------------------- | ------------------------ | ----------------------------------------------------------------------------------------- |
+| `getQuizActivities`     | `round`                  | `{ round, focusTypes?, activities: [{ id, text }] }`. Activity ids are `<elementId>:<index>` |
+| `presentActivities`     | `round`, `intro`         | Client-side tool with no `execute`. The UI renders a rating card and returns `{ ratings: [{ id, rating }] }` with `addToolOutput` |
+| `buildInterestProfile`  | none                     | Holland code, 1–7 score per type with description and keywords, liked and disliked areas   |
+| `matchOccupations`      | `maxJobZone?`, `limit`   | Occupations ranked by match percent, with their interest code and the liked areas they share |
+| `searchOccupations`, `getOccupationProfile`, `getRelatedOccupations` | same as the explorer tools | For follow-up questions |
+
+Because `presentActivities` has no `execute`, the agent's turn ends when it's called. The browser collects the ratings, adds them as the tool output, and `sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls` sends the next request. `handleQuiz` reads every `presentActivities` output from the incoming UI messages (`ratingsFromMessages`) and passes them to the tools, so the model never copies activity ids or ratings.
+
+Scoring (`src/onet/interests.ts`) is deterministic:
+
+- Each rating is worth like 1, unsure 0.5, dislike 0. A type's score is `1 + 6 × mean`, on the same 1–7 scale O\*NET uses for occupations. Area activities count toward each of the area's parent types at half weight.
+- The match percent is 70% the Pearson correlation of the user's and the occupation's RIASEC scores (rescaled to 0–1) and 30% how much the user liked the occupation's strongest Specific Interest Areas, weighted by how strong each area is for the occupation. Before the focused round, it's the correlation alone.
+- The interest catalog (47 documents) and every occupation's interest profile (about 900) are fetched once and cached in memory. Restart the agent after re-importing interest data.
+
+The data comes from the `interests` phase of the Studio importer (`onetInterest` documents and `onetOccupation.interestProfile`). If you change a tool's output shape, update the mirrored types in `web/src/components/InterestQuiz.tsx`.
+
 ## Conversation Insights
 
-When `SANITY_ORGANIZATION_ID` and `SANITY_INSIGHTS_TOKEN` are set and the request includes a chat `id`, each transcript is saved to the organization's Context store under `SANITY_CONTEXT_ENDPOINT_NAME`. The scheduled `classify-conversations` Sanity Function at the repo root (`functions/`, deployed via `sanity.blueprint.ts`) classifies those transcripts hourly, so it must use the same endpoint name.
+When `SANITY_ORGANIZATION_ID` and `SANITY_INSIGHTS_TOKEN` are set and the request includes a chat `id`, each transcript is saved to the organization's Context store under `SANITY_CONTEXT_ENDPOINT_NAME`. The scheduled `classify-conversations` Sanity Function at the repo root (`functions/`, deployed via `sanity.blueprint.ts`) classifies those transcripts weekly (Mondays at 06:00 Central, up to 500 per run), so it must use the same endpoint name.
 
 ## Project structure
 
 ```
 src/
 ├── server.ts           # HTTP server, bearer auth, CORS, routing
-├── chat.ts             # Per-request wiring for /chat and /interview: MCP client, agents, streaming
+├── chat.ts             # Per-request wiring for /chat, /interview, and /quiz: MCP client, agents, streaming
 ├── agent.ts            # Career Explorer: local tool definitions, system prompt, ToolLoopAgent factory
 ├── interview-agent.ts  # Mock Interview Coach: tools, scoring schemas, system prompt, agent factory
+├── quiz-agent.ts       # Interest Quiz: tools, ratings extraction, system prompt, agent factory
 ├── env.ts              # Environment variables and defaults
 ├── sanity.ts           # Read-only Sanity client for the O*NET dataset
-├── sanity-context.ts   # Context MCP client, initial-context fetch and cache
+├── sanity-context.ts   # Context MCP client, per-endpoint initial-context fetch and cache
 ├── sanity-insights.ts  # Conversation Insights integration
 └── onet/
     ├── data.ts         # GROQ queries and shaping for the O*NET tools
-    └── interview.ts    # Interview brief: competencies with Level Scale Anchors
+    ├── interview.ts    # Interview brief: competencies with Level Scale Anchors
+    └── interests.ts    # Quiz activities, RIASEC scoring, occupation matching (cached catalog)
 skills/                 # Sanity Context agent skills (installed from sanity-io/context)
 ```
