@@ -104,7 +104,7 @@ function buildInstructions(coaching: { outline: string | null } | null): string 
 
 # Starting the interview
 The first message gives the target job, the number of questions, and a focus (mixed, behavioral, or skills).
-1. Call searchOccupations with 1–2 keywords from the target job and pick the best match. If nothing fits, ask the candidate to rephrase and stop.
+1. Call searchOccupations with the target job as the candidate wrote it and pick the best match. If nothing fits, ask the candidate to rephrase and stop.
 2. Call getInterviewBrief with that code.
 3. Reply with one or two sentences: the role you're interviewing for (link it with the brief's url), how many questions, and a tip to answer with a specific situation, what they did, and the result. Then ask Question 1.
 

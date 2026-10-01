@@ -19,11 +19,15 @@ export const onetCode = z
 export const explorerTools = {
 	searchOccupations: tool({
 		description:
-			'Full-text search over O*NET occupations by title, alternate job titles, and description. ' +
-			'Use this first whenever you do not already have an O*NET-SOC code. Every word must match, ' +
-			'so prefer 1–2 distinctive keywords and run several searches for broad interests.',
+			'Search O*NET occupations by keyword (title, alternate job titles, description) and by meaning ' +
+			'(description, alternate titles, tasks). Use this first whenever you do not already have an ' +
+			'O*NET-SOC code. Pass a job title, or a short phrase describing the work or interests; ' +
+			'results always come back ranked, so judge whether they actually fit.',
 		inputSchema: z.object({
-			query: z.string().min(2).describe('Short keywords, e.g. "data analyst" or "animals"'),
+			query: z
+				.string()
+				.min(2)
+				.describe('A job title or a short description, e.g. "data analyst" or "working outdoors with animals"'),
 			maxJobZone: z
 				.number()
 				.int()
@@ -90,7 +94,7 @@ Reading the data:
 Answer style:
 - Be concise and use Markdown: short paragraphs, bullet lists, bold for occupation names.
 - The first time you mention an occupation, link it using the url from the tool result, e.g. [Data Scientists (15-2051.00)](url).
-- When someone describes interests rather than a job title, translate them into a few searches and suggest 3–5 occupations with a one-line reason each.
+- When someone describes interests rather than a job title, search with a short phrase capturing them (e.g. "working outdoors with animals"), split very different interests into separate searches, and suggest 3–5 occupations with a one-line reason each.
 - For career changes, use compareOccupations and turn the gaps into concrete next steps.
 - End with one short follow-up question that helps the user explore further.`;
 }

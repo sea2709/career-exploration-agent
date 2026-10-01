@@ -125,12 +125,14 @@ The local tools in `src/onet/data.ts` run GROQ directly against the public O\*NE
 
 | Tool                     | Input                              | Returns                                                                   |
 | ------------------------ | ---------------------------------- | ------------------------------------------------------------------------- |
-| `searchOccupations`      | `query`, `maxJobZone?`, `limit`    | Matching occupations scored by title, alternate titles, and description   |
+| `searchOccupations`      | `query`, `maxJobZone?`, `limit`    | Occupations ranked by keyword and semantic match (see below), excluding "All Other" and military |
 | `getOccupationProfile`   | `code`                             | Description, Job Zone, education, core tasks, top skills/knowledge/abilities/activities, work styles, hot technologies |
 | `compareOccupations`     | `fromCode`, `toCode`               | Skill/knowledge/ability gaps, shared strengths, Job Zone change, new technologies |
 | `getRelatedOccupations`  | `code`, `limit`                    | Related occupations ordered by O\*NET relatedness tier                    |
 
 Codes are O\*NET-SOC codes like `15-2051.00`. Every result includes an `onetonline.org` URL the model uses for links.
+
+`searchOccupations` runs two GROQ queries in parallel: a keyword ranking (`match` on title, alternate titles, and description) and a semantic ranking (`text::semanticSimilarity()`), then merges them with reciprocal rank fusion. Job titles still surface through the keyword ranking, and descriptions like "working outdoors with animals" match by meaning even with no shared words. The semantic ranking needs [dataset embeddings](https://www.sanity.io/docs/content-lake/dataset-embeddings) on `production`, enabled with a projection limited to `onetOccupation` (title, description, alternate titles, tasks); check with `npx sanity datasets embeddings status production`. Each search uses one query from the organization's monthly semantic search quota. If the semantic query fails, the tool logs a warning and returns keyword results only.
 
 The Sanity Context MCP server adds `groq_query` and `schema_explorer` for questions the local tools don't cover.
 

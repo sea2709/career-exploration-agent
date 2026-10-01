@@ -6,22 +6,65 @@ type ImLvDomain = (typeof IM_LV_DOMAINS)[number];
 
 export const onetUrl = (code: string) => `https://www.onetonline.org/link/summary/${code}`;
 
+/** "All Other" catch-alls and military (55-) occupations have no tasks or ratings to recommend. */
+const SEARCH_FILTER = `_type == "onetOccupation"
+	&& !(title match "All Other")
+	&& !string::startsWith(onetsocCode, "55-")
+	&& (!defined($maxJobZone) || jobZone->jobZone <= $maxJobZone)`;
+
+const SEARCH_PROJECTION = `{
+	"code": onetsocCode,
+	title,
+	"jobZone": jobZone->jobZone,
+	description
+}`;
+
+const SEARCH_DEPTH = 20;
+const RRF_K = 60;
+
+type SearchHit = { code: string; title: string; jobZone: number | null; description: string | null };
+
+/**
+ * Hybrid search: a keyword ranking and a semantic ranking (dataset embeddings), merged with
+ * reciprocal rank fusion because their _score scales aren't comparable. Falls back to whichever
+ * ranking succeeded, e.g. keyword only when embeddings are off or the semantic quota is used up.
+ */
 export async function searchOccupations(query: string, limit: number, maxJobZone?: number) {
-	const results = await sanity.fetch<
-		{ code: string; title: string; jobZone: number | null; description: string | null }[]
-	>(
-		`*[_type == "onetOccupation"
-			&& (title match $q || jobTitles[].jobTitle match $q || description match $q)
-			&& (!defined($maxJobZone) || jobZone->jobZone <= $maxJobZone)]
-		| score(boost(title match $q, 5), boost(jobTitles[].jobTitle match $q, 2), description match $q)
-		| order(_score desc)[0...$limit]{
-			"code": onetsocCode,
-			title,
-			"jobZone": jobZone->jobZone,
-			description
-		}`,
-		{ q: query, limit, maxJobZone: maxJobZone ?? null },
-	);
+	const params = { q: query, depth: SEARCH_DEPTH, maxJobZone: maxJobZone ?? null };
+	const settled = await Promise.allSettled([
+		sanity.fetch<SearchHit[]>(
+			`*[${SEARCH_FILTER} && (title match $q || jobTitles[].jobTitle match $q || description match $q)]
+			| score(boost(title match $q, 5), boost(jobTitles[].jobTitle match $q, 2), description match $q)
+			| order(_score desc)[0...$depth]${SEARCH_PROJECTION}`,
+			params,
+		),
+		sanity.fetch<SearchHit[]>(
+			`*[${SEARCH_FILTER}]
+			| score(text::semanticSimilarity($q))
+			| order(_score desc)[0...$depth]${SEARCH_PROJECTION}`,
+			params,
+		),
+	]);
+
+	const rankings: SearchHit[][] = [];
+	for (const result of settled) {
+		if (result.status === 'fulfilled') rankings.push(result.value);
+		else console.warn('[searchOccupations] A ranking failed, continuing without it:', result.reason);
+	}
+	if (!rankings.length) throw (settled[0] as PromiseRejectedResult).reason;
+
+	const fused = new Map<string, { hit: SearchHit; score: number }>();
+	for (const ranking of rankings) {
+		ranking.forEach((hit, rank) => {
+			const entry = fused.get(hit.code) ?? { hit, score: 0 };
+			entry.score += 1 / (RRF_K + rank + 1);
+			fused.set(hit.code, entry);
+		});
+	}
+	const results = [...fused.values()]
+		.sort((a, b) => b.score - a.score)
+		.slice(0, limit)
+		.map(({ hit }) => hit);
 
 	return results.map((r) => ({
 		...r,
