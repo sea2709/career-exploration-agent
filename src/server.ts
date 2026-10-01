@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { handleChat, handleInterview, handleQuiz, type ChatRequestBody } from './chat.ts';
+import { handleCoachingSearch, isCoachingSearchRequestBody } from './coaching-search.ts';
 import { env } from './env.ts';
 
 if (!env.AGENT_API_TOKEN) {
@@ -61,7 +62,8 @@ const server = createServer(async (req, res) => {
 	}
 
 	const handler = CHAT_ROUTES[pathname];
-	if (req.method === 'POST' && handler) {
+	const isCoachingSearch = pathname === '/coaching-search';
+	if (req.method === 'POST' && (handler || isCoachingSearch)) {
 		if (!isAuthorized(req)) {
 			res.setHeader('WWW-Authenticate', 'Bearer');
 			return sendText(res, 401, 'Missing or invalid bearer token.');
@@ -73,6 +75,13 @@ const server = createServer(async (req, res) => {
 		} catch {
 			return sendText(res, 400, 'Invalid JSON body.');
 		}
+
+		if (isCoachingSearch) {
+			if (!isCoachingSearchRequestBody(body)) return sendText(res, 400, 'Expected a JSON body of { query }.');
+			await handleCoachingSearch(body, res);
+			return;
+		}
+
 		if (!isChatRequestBody(body)) {
 			return sendText(res, 400, 'Expected a JSON body of { id, messages }.');
 		}

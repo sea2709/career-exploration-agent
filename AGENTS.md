@@ -19,6 +19,7 @@ Node HTTP service that runs a Gemini `ToolLoopAgent` over the O\*NET dataset in 
 - `src/onet/data.ts`: GROQ queries and result shaping behind the explorer tools.
 - `src/onet/interview.ts`: `getInterviewBrief`, which pairs top competencies with their Level Scale Anchors.
 - `src/onet/interests.ts`: quiz activity selection, RIASEC scoring, and occupation matching over an in-memory cache of the interest catalog and occupation interest profiles.
+- `src/coaching-search.ts`: `POST /coaching-search`, a keyword search over the coaching Knowledge Base for the web guides panel. It parses the text that `knowledge_base_search` and `knowledge_base_read` return, so recheck `parseSearchHits` and `splitEntries` if Sanity changes that format. `CoachingSearchResult` is mirrored in `web/src/components/CoachingGuidesPanel.tsx`.
 - `src/sanity-context.ts`: Sanity Context MCP client, `connectSanityContext`, and the initial-context fetch, cached per endpoint URL.
 - `src/sanity-insights.ts`: optional Conversation Insights integration.
 - `src/env.ts`: the only place that reads `process.env`.
@@ -29,7 +30,7 @@ Node HTTP service that runs a Gemini `ToolLoopAgent` over the O\*NET dataset in 
 - **TypeScript runs directly in Node** via type stripping (`erasableSyntaxOnly`). Don't use enums, namespaces, parameter properties, or other syntax that needs transpiling. Relative imports must include the `.ts` extension, and type-only imports must use `import type` (`verbatimModuleSyntax`).
 - **Env vars go through `src/env.ts`.** Add new vars there with a default where sensible, and document them in `.env.example` and the `README.md` table.
 - **Keep the HTTP layer dependency-free.** It's plain `node:http`. Don't add Express or similar without a good reason.
-- **Protect agent routes.** Every route that does agent or LLM work must go through `isAuthorized`; register new ones in `CHAT_ROUTES` in `server.ts`. `web/` is the only intended caller and sends the token server-side.
+- **Protect agent routes.** Every route that does agent or LLM work, or uses a Sanity token, must go through `isAuthorized`; register new chat routes in `CHAT_ROUTES` in `server.ts` (`/coaching-search` is handled beside them because its body isn't a chat body). `web/` is the only intended caller and sends the token server-side.
 - **Tools must stay grounded.** Local tools return data from Sanity only. When a lookup misses, return an `{ error }` object (see `notFound` in `onet/data.ts`) so the model can recover instead of throwing. Include a `url` from `onetUrl` on occupation results, because the system prompt tells the model to link with it.
 - **Keep tool results compact.** They go into the model's context, so slice lists and truncate long text as the existing tools do.
 - **Adding or renaming a tool affects two other places:**
