@@ -1,8 +1,8 @@
 import { createGoogle } from '@ai-sdk/google';
 import { isStepCount, tool, ToolLoopAgent } from 'ai';
 import { z } from 'zod';
-import { tools as explorerTools } from './agent.ts';
 import { env } from './env.ts';
+import { explorerTools } from './explorer-agent.ts';
 import {
 	buildInterestProfile,
 	getQuizActivities,

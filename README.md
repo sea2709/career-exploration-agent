@@ -26,7 +26,7 @@ web /api/chat ──POST /chat (Bearer AGENT_API_TOKEN)──▶ agent
 1. Install dependencies:
 
    ```sh
-   npm install
+   pnpm install
    ```
 
 2. Create `.env` from the example and fill it in:
@@ -40,18 +40,18 @@ web /api/chat ──POST /chat (Bearer AGENT_API_TOKEN)──▶ agent
 3. Start the server with file watching:
 
    ```sh
-   npm run dev
+   pnpm dev
    ```
 
    It listens on `http://localhost:8787` by default.
 
 ## Commands
 
-| Command             | Action                                             |
-| ------------------- | -------------------------------------------------- |
-| `npm run dev`       | Start with `node --watch`, loading `.env` if present |
-| `npm start`         | Start without watching                             |
-| `npm run typecheck` | Type-check with `tsc` (no emit)                    |
+| Command          | Action                                             |
+| ---------------- | -------------------------------------------------- |
+| `pnpm dev`       | Start with `node --watch`, loading `.env` if present |
+| `pnpm start`     | Start without watching                             |
+| `pnpm typecheck` | Type-check with `tsc` (no emit)                    |
 
 ## HTTP API
 
@@ -116,7 +116,7 @@ If you set `SANITY_CONTEXT_MCP_URL` to an organization endpoint, `SANITY_API_TOK
 2. `chat.ts` opens a Sanity Context MCP client and fetches the dataset's initial context (a schema overview) in parallel.
 3. The initial context is cached in memory for 5 minutes. When stale, it's refreshed in the background while the cached copy is used.
 4. MCP tools are loaded. When the initial context was fetched, the `initial_context` tool is dropped because its content is already in the system prompt.
-5. `agent.ts` builds a `ToolLoopAgent` with the local O\*NET tools, the MCP tools, the system prompt, and the optional Insights integration. It stops after 12 steps.
+5. `explorer-agent.ts` builds a `ToolLoopAgent` with the local O\*NET tools, the MCP tools, the system prompt, and the optional Insights integration. It stops after 12 steps.
 6. `pipeAgentUIStreamToResponse` streams the result to the response and closes the MCP client when done.
 
 ## Tools
@@ -155,12 +155,12 @@ Career counselors write interview coaching guidance as `coachingGuide` documents
 
 The O\*NET brief stays the source of truth for what the job requires. The guidance only shapes how the coach asks, grades, and gives feedback. If `SANITY_COACHING_MCP_URL` is unset or the endpoint can't be reached, the coach runs exactly as before.
 
-Knowledge Bases are in beta. `npm run kb:coaching` prints source usage against the limit (16 of 5,000 for this organization). Keep guides focused anyway: the build merges overlapping guides into one entry (the 16 starter guides became 12 entries) and raises conflict issues when they disagree.
+Knowledge Bases are in beta. `pnpm kb:coaching` prints source usage against the limit (16 of 5,000 for this organization). Keep guides focused anyway: the build merges overlapping guides into one entry (the 16 starter guides became 12 entries) and raises conflict issues when they disagree.
 
 Setup:
 
-1. Deploy the Studio so the Coaching Guide type shows up for editors (`cd ../studio && npm run deploy`), then seed the starter guides: `npm run seed:coaching` (add `-- --dry-run` to preview). The script skips guides whose title already exists, so edits in Studio are never overwritten.
-2. Create and build the Knowledge Base: `npm run kb:coaching` in `studio/`. The first run prints a `COACHING_KB_ID` to save in `studio/.env`. Later runs refresh it, re-reading the guides and filing change issues. It also turns on a weekly refresh. Review any open issues (such as conflicting guidance) in the Sanity dashboard under Context → Knowledge Bases.
+1. Deploy the Studio so the Coaching Guide type shows up for editors (`cd ../studio && pnpm run deploy`), then seed the starter guides: `pnpm seed:coaching` (add `--dry-run` to preview). The script skips guides whose title already exists, so edits in Studio are never overwritten.
+2. Create and build the Knowledge Base: `pnpm kb:coaching` in `studio/`. The first run prints a `COACHING_KB_ID` to save in `studio/.env`. Later runs refresh it, re-reading the guides and filing change issues. It also turns on a weekly refresh. Review any open issues (such as conflicting guidance) in the Sanity dashboard under Context → Knowledge Bases.
 3. In the Sanity dashboard, open Context → MCP endpoints and create an endpoint (for example `interview-coaching`) with **Content source: Knowledge base**, pointing at "Interview coaching guidance".
 4. Set `SANITY_COACHING_MCP_URL` to that endpoint's URL. If `SANITY_API_TOKEN` isn't an organization token with Context access, also set `SANITY_COACHING_TOKEN`.
 
@@ -203,7 +203,7 @@ When `SANITY_ORGANIZATION_ID` and `SANITY_INSIGHTS_TOKEN` are set and the reques
 src/
 ├── server.ts           # HTTP server, bearer auth, CORS, routing
 ├── chat.ts             # Per-request wiring for /chat, /interview, and /quiz: MCP client, agents, streaming
-├── agent.ts            # Career Explorer: local tool definitions, system prompt, ToolLoopAgent factory
+├── explorer-agent.ts   # Career Explorer: local tool definitions, system prompt, ToolLoopAgent factory
 ├── interview-agent.ts  # Mock Interview Coach: tools, scoring schemas, system prompt, agent factory
 ├── quiz-agent.ts       # Interest Quiz: tools, ratings extraction, system prompt, agent factory
 ├── env.ts              # Environment variables and defaults

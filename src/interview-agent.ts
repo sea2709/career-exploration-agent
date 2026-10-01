@@ -1,8 +1,8 @@
 import { createGoogle } from '@ai-sdk/google';
 import { isStepCount, tool, ToolLoopAgent, type ToolSet } from 'ai';
 import { z } from 'zod';
-import { onetCode, tools as explorerTools } from './agent.ts';
 import { env } from './env.ts';
+import { explorerTools, onetCode } from './explorer-agent.ts';
 import { getInterviewBrief } from './onet/interview.ts';
 
 const scoreAnswerInput = z.object({

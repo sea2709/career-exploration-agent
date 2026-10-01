@@ -1,7 +1,7 @@
 import type { ServerResponse } from 'node:http';
 import { pipeAgentUIStreamToResponse } from 'ai';
-import { createCareerAgent } from './agent.ts';
 import { env } from './env.ts';
+import { createExplorerAgent } from './explorer-agent.ts';
 import { createInterviewAgent } from './interview-agent.ts';
 import { createQuizAgent } from './quiz-agent.ts';
 import { connectSanityContext, type SanityContextConnection } from './sanity-context.ts';
@@ -19,7 +19,7 @@ export async function handleChat({ messages, id: chatId }: ChatRequestBody, res:
 	try {
 		context = await connectSanityContext();
 
-		const agent = createCareerAgent({
+		const agent = createExplorerAgent({
 			sanityContextTools: context.tools,
 			initialContext: context.initialContext,
 			insights: createInsightsIntegration(chatId),

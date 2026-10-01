@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { env } from './env.ts';
 import { compareOccupations, getOccupationProfile, getRelatedOccupations, searchOccupations } from './onet/data.ts';
 
-export type CreateCareerAgentOptions = {
+export type CreateExplorerAgentOptions = {
 	sanityContextTools?: ToolSet;
 	initialContext?: string | null;
 	insights?: SanityInsightsIntegration | null;
@@ -16,7 +16,7 @@ export const onetCode = z
 	.regex(/^\d{2}-\d{4}\.\d{2}$/)
 	.describe('O*NET-SOC code, e.g. 15-2051.00');
 
-export const tools = {
+export const explorerTools = {
 	searchOccupations: tool({
 		description:
 			'Full-text search over O*NET occupations by title, alternate job titles, and description. ' +
@@ -95,7 +95,7 @@ Answer style:
 - End with one short follow-up question that helps the user explore further.`;
 }
 
-export function createCareerAgent(options: CreateCareerAgentOptions = {}) {
+export function createExplorerAgent(options: CreateExplorerAgentOptions = {}) {
 	if (!env.GOOGLE_GENERATIVE_AI_API_KEY) {
 		throw new Error('GOOGLE_GENERATIVE_AI_API_KEY is not set. Add it to agent/.env (see .env.example).');
 	}
@@ -106,7 +106,7 @@ export function createCareerAgent(options: CreateCareerAgentOptions = {}) {
 		model: google(env.GEMINI_MODEL),
 		instructions: buildInstructions(initialContext),
 		tools: {
-			...tools,
+			...explorerTools,
 			...sanityContextTools,
 		},
 		stopWhen: isStepCount(12),
@@ -114,4 +114,4 @@ export function createCareerAgent(options: CreateCareerAgentOptions = {}) {
 	});
 }
 
-export type CareerAgentUIMessage = InferAgentUIMessage<ReturnType<typeof createCareerAgent>>;
+export type ExplorerAgentUIMessage = InferAgentUIMessage<ReturnType<typeof createExplorerAgent>>;
