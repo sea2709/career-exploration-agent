@@ -60,13 +60,10 @@ web /api/chat ──POST /chat (Bearer AGENT_API_TOKEN)──▶ agent
 | `POST`    | `/chat`      | Bearer token   | Run the Career Explorer agent and stream an AI SDK UI message stream back |
 | `POST`    | `/interview` | Bearer token   | Run the Mock Interview Coach agent (same body and response format)        |
 | `POST`    | `/quiz`      | Bearer token   | Run the Interest Quiz agent (same body and response format)               |
-| `POST`    | `/coaching-search` | Bearer token | Keyword-search the coaching Knowledge Base for the guides panel. No LLM |
 | `GET`     | `/health`    | none           | Returns `{"ok":true}`                                                     |
 | `OPTIONS` | any          | none           | CORS preflight                                                            |
 
 The chat `POST` routes expect the body that AI SDK's `useChat` sends: `{ id, messages }`, where `messages` is an array of UI messages. On `/chat`, `id` is optional, but when present it's used as the Conversation Insights thread id. `/interview` and `/quiz` don't record Insights.
-
-`/coaching-search` takes `{ query }` and returns `{ results: [{ path, title, summary, score, content }] }`, ranked by relevance (`content` is the entry's Markdown). It calls the coaching endpoint's `knowledge_base_search`, then reads the hits with `knowledge_base_read`. It returns `503` when `SANITY_COACHING_MCP_URL` is unset and `502` when the endpoint fails.
 
 Responses:
 
