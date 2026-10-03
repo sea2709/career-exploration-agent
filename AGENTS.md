@@ -35,6 +35,7 @@ Node HTTP service that runs a Gemini `ToolLoopAgent` over the O\*NET dataset in 
 - **Adding or renaming a tool affects two other places:**
   1. The agent's system prompt (`buildInstructions` in `explorer-agent.ts` or `interview-agent.ts`, or `instructions` in `quiz-agent.ts`), so the model knows when to use it.
   2. The UI label map: `TOOL_LABELS` in `web/src/components/CareerChat.tsx`, `PREP_LABELS` in `web/src/components/InterviewCoach.tsx`, or `STATUS_LABELS` in `web/src/components/InterestQuiz.tsx`.
+- **The explorer's `<next-question>` line is parsed by the UI.** `buildInstructions` in `explorer-agent.ts` asks for it, and `splitNextQuestion` in `web/src/components/CareerChat.tsx` hides it and shows it as the input placeholder. Keep the tag name in sync.
 - **Interview scoring schemas are mirrored in the UI.** `InterviewScore` and `InterviewReport` in `web/src/components/InterviewCoach.tsx` must match the `scoreAnswer` and `finishInterview` input schemas.
 - **Quiz tool shapes are mirrored in the UI.** The types at the top of `web/src/components/InterestQuiz.tsx` must match the `getQuizActivities`, `presentActivities`, `buildInterestProfile`, and `matchOccupations` inputs and outputs.
 - **Quiz scoring stays deterministic.** Ratings reach the tools from the UI messages, not from model input, and scores come from code in `onet/interests.ts`. Don't let the model pass ratings or invent scores. The interest cache lives for the life of the process, so restart after re-importing interest data.

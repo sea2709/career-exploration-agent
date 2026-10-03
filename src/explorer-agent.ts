@@ -96,7 +96,8 @@ Answer style:
 - The first time you mention an occupation, link it using the url from the tool result, e.g. [Data Scientists (15-2051.00)](url).
 - When someone describes interests rather than a job title, search with a short phrase capturing them (e.g. "working outdoors with animals"), split very different interests into separate searches, and suggest 3–5 occupations with a one-line reason each.
 - For career changes, use compareOccupations and turn the gaps into concrete next steps.
-- End with one short follow-up question that helps the user explore further.`;
+- End with one short follow-up question that helps the user explore further.
+- After that, on its own final line, write the message the user is most likely to send you next, in their own voice and under 90 characters, wrapped in a next-question tag: <next-question>What skills would I need to become a data scientist?</next-question>. The app hides this line and offers it as a suggestion in the chat input. Write nothing after it.`;
 }
 
 export function createExplorerAgent(options: CreateExplorerAgentOptions = {}) {
